@@ -1,0 +1,8 @@
+- id: flakehound
+  name: flakehound (flaky-test patterns)
+  description: Static flaky-pattern detection for pytest test files.
+  entry: flakehound scan
+  language: python
+  types: [python]
+  files: '(^|/)(test_[^/]+|[^/]+_test|conftest)\.py$'
+  pass_filenames: true
