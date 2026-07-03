@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 
 from flakehound.rules.base import Confidence, FileContext
-from flakehound.rules.g3_sleep_in_test import SleepInTest
+from flakehound.rules.g3_sleep_calls import SleepInTest
 
 
 def _ctx(source: str, name: str = "test_x.py") -> FileContext:
