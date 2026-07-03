@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar
 
@@ -53,11 +53,6 @@ class FileContext:
     tree: ast.Module
     is_test_file: bool
     is_conftest: bool
-    lines: list[str] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        if not self.lines:
-            self.lines = self.source.splitlines()
 
 
 class Rule:
