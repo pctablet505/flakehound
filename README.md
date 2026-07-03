@@ -32,15 +32,16 @@ understands why **ML test suites** flake (seeds, tolerances, GPU nondeterminism)
 - 🔎 **Predict** — an AST rule corpus flags flaky-*prone* patterns at pre-commit time, before
   the first flake: global seed mutation, unordered-collection asserts, unfrozen `datetime.now()`,
   un-mocked network calls, leaked threads, shared-state fixtures, and more.
-- 📈 **Score** — a pytest plugin logs every outcome to a **local SQLite** history (no cloud, no
-  account) and computes per-test flakiness scores from flip-rate, recency, duration variance,
-  and failure entropy. Plays clean with `xdist`, `randomly`, `rerunfailures`.
 - 🧪 **The ML wedge** — the only tool that knows `assert_allclose(atol=1e-8)` on a stochastic
   model output is a time bomb, that a reused JAX `PRNGKey` breaks test independence, and that
   your GPU test needs `torch.use_deterministic_algorithms(True)`.
 - 🩺 **Diagnose, don't just retry** — every finding carries a root cause and a concrete fix
-  suggestion; the report ranks tests with evidence (e.g. "fails only under 3 of 40
-  pytest-randomly seeds → order-dependent").
+  suggestion (e.g. "mutates global RNG state; use a local generator instead").
+- 📈 **Score (coming in v0.2)** — a pytest plugin will log every outcome to a **local SQLite**
+  history (no cloud, no account) and compute per-test flakiness scores from flip-rate, recency,
+  duration variance, and failure entropy, ranking tests with evidence (e.g. "fails only under
+  3 of 40 pytest-randomly seeds → order-dependent"). Today the plugin adds a one-line summary;
+  see [Roadmap](#roadmap).
 
 ## Quickstart
 
@@ -80,14 +81,27 @@ repos:
 | Predicts before first flake | ❌ | ❌ | ✅ static rules |
 | Root-cause diagnosis | ❌ | ❌ (history only) | ✅ per-rule cause + fix |
 | ML-testing aware | ❌ | ❌ | ✅ JAX/PyTorch/NumPy rules |
-| Local-first / no cloud | ✅ | ❌ | ✅ SQLite in your repo |
+| Local-first / no cloud | ✅ | ❌ | ✅ static scan, no server (SQLite history in v0.2) |
 | Price | free | $0–499/mo | free, Apache-2.0 |
 
 ## Rules
 
 Run `flakehound scan --help` for the toggles. Current corpus: `G1–G12` (general Python
 flakiness causes, ranked by measured frequency in a 22k-project study) + `M1–M5` (the ML pack).
-Full catalog with examples: [docs/rules.md](docs/rules.md).
+
+| ID | Rule | ID | Rule |
+|---|---|---|---|
+| G1 | global-seed-mutation | G9 | hardcoded-tmp-paths |
+| G2 | unordered-collection-compare | G10 | event-loop-misuse |
+| G3 | sleep-in-test | G11 | leaked-threads-timers |
+| G4 | naive-now | G12 | env-mutation |
+| G5 | shared-state-fixture | M1 | unseeded-stochastic-assert |
+| G6 | import-time-side-effects | M2 | jax-prngkey-reuse |
+| G7 | unmocked-network | M3 | suspicious-tolerance |
+| G8 | float-equality-without-tolerance | M4 | missing-determinism-flags |
+| | | M5 | module-scope-jit |
+
+Every finding prints its cause and fix suggestion inline — see the example output above.
 
 Configure in `pyproject.toml`:
 
@@ -108,8 +122,8 @@ ml_rules = true
 - **later** — auto-fix codemods, FLEX-style tolerance estimation
 
 Benchmarked against the [IDoFT](https://github.com/TestingResearchIllinois/idoft) Python
-dataset and Gruber et al.'s FlaPy corpus — numbers published honestly in
-[docs/benchmarks.md](docs/benchmarks.md) as they land.
+dataset and Gruber et al.'s FlaPy corpus — numbers will be published honestly in
+`docs/benchmarks.md` here as they land.
 
 ## Contributing
 
