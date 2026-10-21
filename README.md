@@ -1,166 +1,91 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/pctablet505/flakehound/main/docs/assets/logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/pctablet505/flakehound/main/docs/assets/logo.svg">
-    <img src="https://raw.githubusercontent.com/pctablet505/flakehound/main/docs/assets/logo.svg" alt="flakehound" width="140">
-  </picture>
-</p>
+# flakehound
 
-<h1 align="center">flakehound</h1>
-
-<p align="center"><b>Hunt flaky tests before they bite.</b><br>
-Static flaky-pattern detection + local run-history scoring for <code>pytest</code> —
-with first-class awareness of <b>ML test flakiness</b> (JAX · PyTorch · NumPy).</p>
-
-<p align="center">
-  <a href="https://github.com/pctablet505/flakehound/actions"><img src="https://github.com/pctablet505/flakehound/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pypi.org/project/flakehound/"><img src="https://img.shields.io/pypi/v/flakehound.svg" alt="PyPI"></a>
-  <img src="https://img.shields.io/pypi/pyversions/flakehound.svg" alt="Python versions">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
-</p>
-
----
-
-Flaky tests — tests that pass and fail on the same code — are expensive and common: about
-**13% of failing builds** in a 61-project study of Travis CI Java projects were caused by
-flaky tests ([Labuschagne et al., 2017](#references)), and an internal Microsoft study found
-**26% of tests** in a large industrial suite exhibited flaky behavior
-([Lam et al., ISSTA 2019](#references)). Every existing answer is either *retry harder*
-(`pytest-rerunfailures`, `flaky`) or a *paid cloud dashboard* that notices flakiness only after
-it has already burned your CI for weeks. Nothing predicts, nothing diagnoses, and nothing
-understands why **ML test suites** flake (seeds, tolerances, GPU nondeterminism).
-
-**flakehound is different:**
-
-- 🔎 **Predict** — an AST rule corpus flags flaky-*prone* patterns at pre-commit time, before
-  the first flake: global seed mutation, unordered-collection asserts, unfrozen `datetime.now()`,
-  un-mocked network calls, leaked threads, shared-state fixtures, and more.
-- 🧪 **The ML wedge** — a static rule pack tuned for ML numeric and RNG patterns
-  (JAX/PyTorch/NumPy): tight `assert_allclose(atol=1e-8)` tolerances on stochastic model
-  output, reused JAX `PRNGKey`s that break test independence, and missing
-  `torch.use_deterministic_algorithms(True)` on GPU tests.
-- 🩺 **Diagnose, don't just retry** — every finding carries a root cause and a concrete fix
-  suggestion (e.g. "mutates global RNG state; use a local generator instead").
-- 📈 **Score (coming in v0.2)** — a pytest plugin will log every outcome to a **local SQLite**
-  history (no cloud, no account) and compute per-test flakiness scores from flip-rate, recency,
-  duration variance, and failure entropy, ranking tests with evidence (e.g. "fails only under
-  3 of 40 pytest-randomly seeds → order-dependent"). Today the plugin adds a terminal summary;
-  see [Roadmap](#roadmap).
-
-## Quickstart
+flakehound reads your pytest files and points at code that can make a test pass on one run and fail on the next,
+without running the tests. It is not on PyPI yet, so install it from this repository:
 
 ```bash
-pip install flakehound
-
-# static scan — no tests executed, instant
+pip install git+https://github.com/pctablet505/flakehound
 flakehound scan tests/
-
-# as part of a pytest run
-pytest --flakehound
 ```
 
-Example output:
+## A flaky test, the finding, the fix
 
-```
-tests/test_model.py:41:4: [G1/high] `np.random.seed(...)` mutates global RNG state; test outcomes now depend on execution order
-    fix: use a local generator: `rng = np.random.default_rng(seed)` ...
-tests/test_infer.py:88:8: [M3/advisory] `atol=1e-08` on a value derived from `model.predict(...)` is machine-precision tight; stochastic/float32 model outputs routinely disagree by more than this run-to-run
-    fix: justify this bound or derive it from an observed distribution of repeated runs (FLEX FSE-21) ...
-```
+This test passed under 10 of 50 Python hash seeds and failed under the other 40. Python picks a hash seed at random
+for each run, and the seed decides the order of a set of strings.
 
-### Pre-commit
+How it was counted: the assert's expression, run once per seed with `PYTHONHASHSEED=1` to `50` and `python3 -c`.
 
-`rev` must match a released git tag (tags are cut together with the corresponding
-GitHub Release) — it will not resolve before that tag exists.
-
-```yaml
-repos:
-  - repo: https://github.com/pctablet505/flakehound
-    rev: v0.1.0
-    hooks:
-      - id: flakehound
+```python
+def test_supported_devices():
+    devices = ["gpu", "cpu", "tpu", "cpu"]
+    assert list(set(devices)) == ["cpu", "gpu", "tpu"]
 ```
 
-## Why not just …?
+`flakehound scan tests/` printed this (flakehound 0.1.0, run on 21 October 2026; long lines wrapped to fit a phone):
 
-| | retries (`rerunfailures`, `flaky`) | SaaS (Trunk / BuildPulse / Datadog) | **flakehound** |
-|---|---|---|---|
-| Predicts before first flake | ❌ | ❌ | ✅ static rules |
-| Root-cause diagnosis | ❌ | ❌ (history only) | ✅ per-rule cause + fix |
-| ML-testing aware | ❌ | ❌ | ✅ JAX/PyTorch/NumPy rules |
-| Local-first / no cloud | ✅ | ❌ | ✅ static scan, no server (SQLite history in v0.2) |
-| Price | free | $0–499/mo | free, Apache-2.0 |
+```text
+tests/test_devices.py:3:11: [G2/high]
+`list(set(...))` materializes a set
+into a list; set iteration order is
+not guaranteed to be stable across
+runs
+    fix: sort both sides before
+    comparing (`sorted(x) ==
+    sorted(y)`), or compare as
+    sets/dicts directly (`set(x) ==
+    set(y)`) if order was never the
+    point
 
-<sup>Competitor names, features, and pricing as of July 2026 — verify against each
-vendor's own site before relying on them; see [References](#references).</sup>
+flakehound: 1 finding(s) in 1 test
+file(s)
+```
 
-## Rules
+With `assert sorted(set(devices)) == ["cpu", "gpu", "tpu"]` the scan reports 0 findings, and the test passes under all
+50 seeds.
 
-Run `flakehound scan --help` for the toggles. Current corpus: `G1–G12` (general Python
-flakiness causes) + `M1–M5` (the ML pack).
+## What it checks
 
-| ID | Rule | ID | Rule |
-|---|---|---|---|
-| G1 | global-seed-mutation | G9 | hardcoded-tmp-paths |
-| G2 | unordered-collection-compare | G10 | event-loop-misuse |
-| G3 | sleep-in-test | G11 | leaked-threads-timers |
-| G4 | naive-now | G12 | env-mutation |
-| G5 | shared-state-fixture | M1 | unseeded-stochastic-assert |
-| G6 | import-time-side-effects | M2 | jax-prngkey-reuse |
-| G7 | unmocked-network | M3 | suspicious-tolerance |
-| G8 | float-equality-without-tolerance | M4 | missing-determinism-flags |
-| | | M5 | module-scope-jit |
+G2, the rule above, is one of 17. The other 16 cover global random seeds, sleeps, the wall clock, shared fixtures,
+network calls and more, and 5 of them are for ML tests (JAX, PyTorch, NumPy), such as a tolerance tighter than float
+noise. [Every rule, with a bad and a good example →](docs/rules.md)
 
-Every finding prints its cause and fix suggestion inline — see the example output above.
-Full catalog with a bad/good example and fix for every rule: [docs/rules.md](docs/rules.md).
+## Use it
 
-Configure in `pyproject.toml`:
+```bash
+flakehound scan tests/      # static scan: runs no tests
+pytest --flakehound         # the same rules, as part of a pytest run
+```
+
+The scan exits with 1 when a finding is at or above the level set by `fail_on`, so it can stop a CI job. Settings live in
+`pyproject.toml`:
 
 ```toml
 [tool.flakehound]
-fail_on = "high"          # high | medium | advisory | never
-disable = ["G3"]
+fail_on = "high"      # level that fails: high, medium, advisory, never
+disable = ["G3"]      # rule ids to skip
 exclude = ["tests/legacy/*"]
-ml_rules = true
+ml_rules = true       # the 5 ML rules
 ```
 
-## Roadmap
+## Limits
 
-- **v0.1** — static rule corpus (G+M), `scan` CLI, pre-commit hook *(you are here)*
-- **v0.2** — run-history scoring: SQLite outcome log, flip-rate model, `flakehound report`,
-  xdist-safe merging, seed-covariate order-dependence evidence
-- **v0.3** — GitHub Action with cached history + PR annotations; quarantine recommendations
-- **later** — auto-fix codemods, FLEX-style tolerance estimation
+- **It knows patterns, not every bug.** The same set-order bug with the set in a variable (`devices = {...}`, then
+  `list(devices) == [...]`) got 0 findings, though that test passed under only 9 of 50 seeds.
+- **Not measured: how often it is right on real projects.** No accuracy figure is published yet; benchmarks on public
+  flaky-test datasets are planned ([docs/benchmarks.md](docs/benchmarks.md)).
+- **Not history-based yet.** Scoring tests from their past runs is planned for v0.2.
+- **Alpha, version 0.1.0.** The pre-commit hook needs a release tag, and none exists yet.
 
-Benchmarked against the [IDoFT](https://github.com/TestingResearchIllinois/idoft) Python
-dataset and Gruber et al.'s FlaPy corpus — numbers will be published honestly in
-`docs/benchmarks.md` here as they land.
+## Where next
 
-## Contributing
+- [docs/rules.md](docs/rules.md): the 17 rules, each with a bad and a good example.
+- [docs/details.md](docs/details.md): the longer overview that used to be here, with the pre-commit setup, the roadmap
+  and the studies on how common flaky tests are.
+- [CONTRIBUTING.md](CONTRIBUTING.md): a new rule is one module, a test it must catch and a test it must not.
 
-Rules are tiny, self-contained, and *very* contributable — one module + a true-positive
-fixture + a false-positive guard. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[`good first issue`](https://github.com/pctablet505/flakehound/labels/good%20first%20issue)
-label. If your team fought a flaky pattern we don't catch, we want the rule.
+Apache-2.0, see [LICENSE](LICENSE).
 
-## References
+---
 
-- Labuschagne, A., Inozemtseva, L., & Holmes, R. (2017). *Measuring the cost of regression
-  testing in practice: a study of Java projects using continuous integration.* ESEC/FSE 2017.
-  [doi:10.1145/3106237.3106288](https://doi.org/10.1145/3106237.3106288) — source of the ~13%
-  failing-builds-due-to-flakiness figure (935 builds, 61 Travis CI Java projects).
-- Lam, W., Godefroid, P., Nath, S., Santhiar, A., & Thummalapenta, S. (2019). *Root causing
-  flaky tests in a large-scale industrial setting.* ISSTA 2019.
-  [doi:10.1145/3293882.3330570](https://doi.org/10.1145/3293882.3330570) — source of the ~26%
-  flaky-test figure at Microsoft.
-- Parry, O., Kapfhammer, G. M., Hilton, M., & McMinn, P. (2021). *A survey of flaky tests.*
-  ACM Transactions on Software Engineering and Methodology, 31(1).
-  [doi:10.1145/3476105](https://doi.org/10.1145/3476105) — background survey covering causes,
-  detection, and mitigation across the flaky-test literature.
-
-Competitor names/pricing in the comparison table above are not independently cited here;
-verify current features and pricing directly with each vendor.
-
-## License
-
-Apache-2.0.
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/mark-dark.svg"><img src="assets/mark-light.svg" width="16" height="16" alt=""></picture>
+<sub>**Real numbers, failures left in.** Built by [pctablet505](https://github.com/pctablet505).</sub>
