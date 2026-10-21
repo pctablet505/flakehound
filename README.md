@@ -1,13 +1,13 @@
 <a href="docs/rules.md">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" width="100%" alt="flakehound. Find flaky tests by their pattern, not by retrying them. Static checks for pytest, with rules for JAX, PyTorch and NumPy tests.">
+  <img src="assets/hero-light.svg" width="100%" alt="flakehound. Find flaky tests by their pattern, not by retrying them.">
 </picture>
 </a>
 
-**Find flaky tests by their pattern, not by retrying them.** flakehound reads a pytest suite and flags the code that
-makes a test pass and fail on the same commit: a global random seed, a set compared in order, a network call
-nobody mocked. Each finding says why it flakes and how to fix it.
+flakehound reads a pytest suite and flags the line that makes a test pass and fail on the same commit: a global
+random seed, a set compared in order, a network call nobody mocked. Each finding says why it flakes and how to fix
+it, and the scan runs none of your tests.
 
 **[Run it on your tests →](#try-it)**
 
