@@ -88,4 +88,4 @@ Apache-2.0, see [LICENSE](LICENSE).
 ---
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/mark-dark.svg"><img src="assets/mark-light.svg" width="16" height="16" alt=""></picture>
-<sub>**Real numbers, failures left in.** Built by [pctablet505](https://github.com/pctablet505).</sub>
+<sub>**Big models, small places, real numbers** · Built by [pctablet505](https://github.com/pctablet505).</sub>
